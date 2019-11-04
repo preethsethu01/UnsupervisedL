@@ -1,0 +1,119 @@
+import pandas
+from sklearn import model_selection
+from sklearn.metrics import accuracy_score
+from sklearn import mixture
+from sklearn import preprocessing
+import numpy as np
+from sklearn.decomposition import PCA
+from sklearn import random_projection
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import chi2
+from sklearn.decomposition import FastICA
+from sklearn.cluster import KMeans
+from matplotlib import pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
+from yellowbrick.cluster import InterclusterDistance
+from sklearn import metrics
+
+#Load dataset
+url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/iris.csv"
+names = ['sepal-length','sepal-width','petal-length','petal-width','class']
+
+dataset = pandas.read_csv(url,names=names)
+#Split-out validation dataset
+array = dataset.values
+X = array[:,0:4]
+Y = array[:,4]
+validation_size = 0.20
+seed = 7
+X_train, X_validation, Y_train, Y_validation = model_selection.train_test_split(X, Y, test_size=validation_size, random_state=seed)
+
+le = preprocessing.LabelEncoder()
+le.fit(Y_train)
+Y_train_encoded = le.transform(Y_train)
+Y_test_encoded = le.transform(Y_validation)
+
+#K Cluster or K Means
+print("*******************K Means Cluster*******************")
+#Find optimal number of clusters using Elbow method
+wcss = []
+for i in range(1,11):
+    kmeans = KMeans(n_clusters=i,init='k-means++',max_iter=300,n_init=10,random_state=0)
+    kmeans.fit(X_train)
+    wcss.append(kmeans.inertia_)
+plt.plot(list(range(1,11)),wcss)
+plt.title('Elbow Method')
+plt.xlabel('Number of clusters')
+plt.ylabel('WCCS')
+plt.show()
+kmeans = KMeans(n_clusters=3,init='k-means++',max_iter=300,n_init=10,random_state=0)
+pred_y_train = kmeans.fit_predict(X_train)
+print("K Cluster Train Accuracy")
+homo_score  = metrics.homogeneity_score(pred_y_train,Y_train_encoded)
+print("Homogeneity Score")
+print homo_score
+print(accuracy_score(pred_y_train,Y_train_encoded))
+
+visualizer = InterclusterDistance(kmeans)
+#visualizer.fit(X_train)
+#visualizer.show()
+
+
+
+pred_y_test = kmeans.fit_predict(X_validation)
+print("K Cluster Test Accuracy")
+print(accuracy_score(pred_y_test,Y_test_encoded))
+
+visualizer.fit(X_validation)
+visualizer.show()
+
+#Using K means Cluster as Features
+X_train_cluster = pandas.DataFrame(X_train)
+X_validation_cluster = pandas.DataFrame(X_validation)
+print("@@@@@@@@@@@@@@@@@@   KMeans Labels@@@@@@@@@@@@@@@@@")
+
+X_train_cluster['km'] = pred_y_train
+X_validation_cluster['km'] = pred_y_test
+
+
+#Run Neural Net on dataset with KMeans Cluster
+nn_model = MLPClassifier(solver='lbfgs',activation='relu',alpha=1e-5,hidden_layer_sizes=(60,),learning_rate='constant',random_state=seed)
+nn_model.fit(X_train_cluster,Y_train)
+nn_model_predict = nn_model.predict(X_validation_cluster)
+
+print("$$$$$$$$$ Neural Network Accuracy $$$$$$$$$$$$$$")
+print(accuracy_score(Y_validation,nn_model_predict))
+
+
+
+
+#Expectation Maximization
+print("********************Expectation Maximization*******************")
+giris = mixture.GaussianMixture(n_components=3,covariance_type = 'full')
+giris.fit(X_train)
+labels_train  = giris.predict(X_train)
+print("Train Accuracy")
+
+print(accuracy_score(Y_train_encoded,labels_train))
+
+labels_test = giris.predict(X_validation)
+print("Test Accuracy")
+print(accuracy_score(Y_test_encoded,labels_test))
+
+X_train_expected = pandas.DataFrame(X_train)
+X_validation_expected = pandas.DataFrame(X_validation)
+
+print("@@@@@@@@@@@@@ Expected Maximization @@@@@@@@@@@@@")
+
+X_train_expected['EM'] = labels_train
+X_validation_expected['EM'] = labels_test
+
+
+#Run Neural Net on dataset with Expected Maximization Cluster
+nn_model = MLPClassifier(solver='lbfgs',activation='relu',alpha=1e-5,hidden_layer_sizes=(60,),learning_rate='constant',random_state=seed)
+nn_model.fit(X_train_expected,Y_train)
+nn_model_predict = nn_model.predict(X_validation_expected)
+
+print("$$$$$$$$$ Neural Network Accuracy $$$$$$$$$$$$$$")
+print(accuracy_score(Y_validation,nn_model_predict))
